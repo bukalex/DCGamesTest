@@ -3,3 +3,12 @@
 
 #include "UI/LaptopWidget.h"
 
+void ULaptopWidget::NativeConstruct()
+{
+	Super::NativeConstruct();
+}
+
+void ULaptopWidget::NativeDestruct()
+{
+	Super::NativeDestruct();
+}

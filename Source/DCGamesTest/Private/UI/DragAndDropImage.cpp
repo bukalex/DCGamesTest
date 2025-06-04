@@ -11,11 +11,13 @@ void UDragAndDropImage::SynchronizeProperties()
 	{
 		MyImage->SetOnMouseButtonUp(BIND_UOBJECT_DELEGATE(FPointerEventHandler, HandleMouseButtonUp));
 		MyImage->SetOnMouseMove(BIND_UOBJECT_DELEGATE(FPointerEventHandler, HandleMouseMove));
+		MyImage->SetOnMouseLeave(BIND_UOBJECT_DELEGATE(FSimpleNoReplyPointerEventHandler, HandleMouseLeave));
 	}
 
 	if (!OnMouseButtonDownEvent.IsBound()) OnMouseButtonDownEvent.BindUFunction(this, "OnMouseButtonDown");
 	if (!OnMouseMoveEvent.IsBound()) OnMouseMoveEvent.BindUFunction(this, "OnMouseMove");
 	if (!OnMouseButtonUpEvent.IsBound()) OnMouseButtonUpEvent.BindUFunction(this, "OnMouseButtonUp");
+	if (!OnMouseLeaveEvent.IsBound()) OnMouseLeaveEvent.BindUFunction(this, "OnMouseLeave");
 
 	if (!RootWidgetToDrag) RootWidgetToDrag = this;
 }
@@ -40,19 +42,38 @@ FReply UDragAndDropImage::HandleMouseMove(const FGeometry& Geometry, const FPoin
 	return FReply::Unhandled();
 }
 
-FVector2D UDragAndDropImage::AbsoluteToLocalTranslation(const FGeometry& Geometry, const FVector2D& AbsoluteStart, const FVector2D& AbsoluteEnd)
+void UDragAndDropImage::HandleMouseLeave(const FPointerEvent& MouseEvent)
 {
-	return
-		Geometry.AbsoluteToLocal(AbsoluteEnd) -
-		Geometry.AbsoluteToLocal(AbsoluteStart);
+	if (OnMouseLeaveEvent.IsBound())
+	{
+		OnMouseLeaveEvent.Execute(MouseEvent);
+	}
+}
+
+void UDragAndDropImage::ClampTranslationToLocalAxis(FVector2D& LocalTranslation)
+{
+	switch (AllowedDragAxes)
+	{
+	case EDragAxis::DA_XAxis:
+		LocalTranslation.Y = 0;
+		break;
+
+	case EDragAxis::DA_YAxis:
+		LocalTranslation.X = 0;
+		break;
+	}
 }
 
 FEventReply UDragAndDropImage::OnMouseButtonDown(const FGeometry& Geometry, const FPointerEvent& MouseEvent)
 {
 	if (!RootWidgetToDrag) RootWidgetToDrag = this;
+	const FGeometry RootGeometry = RootWidgetToDrag->GetCachedGeometry();
+
+	FVector2D LocalSize = RootGeometry.GetLocalSize();
+	LocalPivotPosition = FVector2D(LocalSize.X * RootWidgetToDrag->GetRenderTransformPivot().X, LocalSize.Y * RootWidgetToDrag->GetRenderTransformPivot().Y);
 
 	bIsBeingDragged = true;
-	LocalCursorOffset = Geometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition()) - Geometry.GetLocalSize() * 0.5f;
+	LocalCursorOffset = RootGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition()) - LocalPivotPosition;
 
 	return FEventReply(true);
 }
@@ -63,30 +84,38 @@ FEventReply UDragAndDropImage::OnMouseMove(const FGeometry& Geometry, const FPoi
 	if (MouseEvent.GetCursorDelta().IsNearlyZero()) return FEventReply(true);
 
 	if (!RootWidgetToDrag) RootWidgetToDrag = this;
+	const FGeometry RootGeometry = RootWidgetToDrag->GetCachedGeometry();
+	FWidgetTransform OldTransform = RootWidgetToDrag->GetRenderTransform();
 	FWidgetTransform NewTransform = RootWidgetToDrag->GetRenderTransform();
 
-	FVector2D LocalSize = Geometry.GetLocalSize();
-	FVector2D LocalTranslation = AbsoluteToLocalTranslation(Geometry, MouseEvent.GetLastScreenSpacePosition(), MouseEvent.GetScreenSpacePosition());
+	FVector2D LocalTranslation =
+		RootGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition()) -
+		RootGeometry.AbsoluteToLocal(MouseEvent.GetLastScreenSpacePosition());
+	ClampTranslationToLocalAxis(LocalTranslation);
 
 	if (!bLockTranslation)
 	{
 		NewTransform.Translation += LocalTranslation.GetRotated(NewTransform.Angle);
 	}
 
-	if (!bLockRotation)
+	if (!bLockRotation && AllowedDragAxes == EDragAxis::DA_XYAxes)
 	{
-		FVector2D LocalCursorPosition = Geometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition());
-		FVector2D LocalCursorToOldPosition = (LocalSize * 0.5f - LocalCursorPosition).GetSafeNormal();
-		FVector2D LocalCursorToNewPosition = (LocalSize * 0.5f + LocalTranslation - LocalCursorPosition).GetSafeNormal();
+		FVector2D LocalCursorPosition = RootGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition());
+		FVector2D LocalCursorToOldPosition = (LocalPivotPosition - LocalCursorPosition).GetSafeNormal();
+		FVector2D LocalCursorToNewPosition = (LocalPivotPosition + LocalTranslation - LocalCursorPosition).GetSafeNormal();
 
 		float DeltaAngle = FMath::RadiansToDegrees(FMath::Acos(LocalCursorToOldPosition | LocalCursorToNewPosition)) * FMath::Sign(LocalCursorToNewPosition ^ LocalCursorToOldPosition);
-		FVector2D LocalCorrection = LocalCursorPosition - (LocalSize * 0.5f + LocalTranslation + LocalCursorOffset.GetRotated(DeltaAngle));
-
 		NewTransform.Angle += DeltaAngle;
-		NewTransform.Translation += LocalCorrection.GetRotated(NewTransform.Angle);
+
+		if (!bLockTranslation)
+		{
+			FVector2D LocalCorrection = LocalCursorPosition - (LocalPivotPosition + LocalTranslation + LocalCursorOffset.GetRotated(DeltaAngle));
+			NewTransform.Translation += LocalCorrection.GetRotated(NewTransform.Angle);
+		}
 	}
 
 	RootWidgetToDrag->SetRenderTransform(NewTransform);
+	if (OnWidgetMoved.IsBound()) OnWidgetMoved.Execute(OldTransform, NewTransform);
 
 	return FEventReply(true);
 }
@@ -96,6 +125,11 @@ FEventReply UDragAndDropImage::OnMouseButtonUp(const FGeometry& Geometry, const 
 	bIsBeingDragged = false;
 
 	return FEventReply(true);
+}
+
+void UDragAndDropImage::OnMouseLeave(const FPointerEvent& MouseEvent)
+{
+	bIsBeingDragged = false;
 }
 
 bool UDragAndDropImage::IsBeingDragged()

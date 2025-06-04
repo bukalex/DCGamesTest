@@ -2,11 +2,12 @@
 
 #pragma once
 
-#include "Input/Reply.h"
-
 #include "CoreMinimal.h"
 #include "Components/Image.h"
 #include "DragAndDropImage.generated.h"
+
+DECLARE_DYNAMIC_DELEGATE_OneParam(FOnPointerEventSimple, const FPointerEvent&, MouseEvent);
+DECLARE_DYNAMIC_DELEGATE_TwoParams(FOnWidgetMoved, const FWidgetTransform&, OldTransform, const FWidgetTransform&, NewTransform);
 
 UENUM(BlueprintType)
 enum class EDragAxis : uint8
@@ -31,6 +32,12 @@ public:
 	UPROPERTY(EditAnywhere, Category = Events, meta = (IsBindableEvent = "True"))
 	FOnPointerEvent OnMouseButtonUpEvent;
 
+	UPROPERTY(EditAnywhere, Category = Events, meta = (IsBindableEvent = "True"))
+	FOnPointerEventSimple OnMouseLeaveEvent;
+
+	UPROPERTY(EditAnywhere, Category = Events, meta = (IsBindableEvent = "True"))
+	FOnWidgetMoved OnWidgetMoved;
+
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Drag And Drop")
 	bool bLockTranslation = false;
@@ -48,6 +55,7 @@ protected:
 	bool bIsBeingDragged = false;
 
 	FVector2D LocalCursorOffset;
+	FVector2D LocalPivotPosition;
 
 protected:
 	virtual void SynchronizeProperties() override;
@@ -55,8 +63,9 @@ protected:
 protected:
 	FReply HandleMouseButtonUp(const FGeometry& Geometry, const FPointerEvent& MouseEvent);
 	FReply HandleMouseMove(const FGeometry& Geometry, const FPointerEvent& MouseEvent);
+	void HandleMouseLeave(const FPointerEvent& MouseEvent);
 
-	FVector2D AbsoluteToLocalTranslation(const FGeometry& Geometry, const FVector2D& AbsoluteStart, const FVector2D& AbsoluteEnd);
+	void ClampTranslationToLocalAxis(FVector2D& LocalTranslation);
 
 protected:
 	UFUNCTION(BlueprintCallable)
@@ -67,6 +76,9 @@ protected:
 
 	UFUNCTION(BlueprintCallable)
 	FEventReply OnMouseButtonUp(const FGeometry& Geometry, const FPointerEvent& MouseEvent);
+
+	UFUNCTION(BlueprintCallable)
+	void OnMouseLeave(const FPointerEvent& MouseEvent);
 
 public:
 	UFUNCTION(BlueprintPure)
