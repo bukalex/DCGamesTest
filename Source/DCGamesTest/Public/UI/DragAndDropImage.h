@@ -11,7 +11,6 @@
 UENUM(BlueprintType)
 enum class EDragAxis : uint8
 {
-	DA_None		UMETA(DisplayName = "None"),
 	DA_XAxis	UMETA(DisplayName = "X"),
 	DA_YAxis	UMETA(DisplayName = "Y"),
 	DA_XYAxes	UMETA(DisplayName = "XY")
@@ -34,6 +33,9 @@ public:
 
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Drag And Drop")
+	bool bLockTranslation = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Drag And Drop")
 	bool bLockRotation = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Drag And Drop")
@@ -45,7 +47,7 @@ protected:
 protected:
 	bool bIsBeingDragged = false;
 
-	FVector2D LocalCursorPosition;
+	FVector2D LocalCursorOffset;
 
 protected:
 	virtual void SynchronizeProperties() override;
@@ -53,6 +55,8 @@ protected:
 protected:
 	FReply HandleMouseButtonUp(const FGeometry& Geometry, const FPointerEvent& MouseEvent);
 	FReply HandleMouseMove(const FGeometry& Geometry, const FPointerEvent& MouseEvent);
+
+	FVector2D AbsoluteToLocalTranslation(const FGeometry& Geometry, const FVector2D& AbsoluteStart, const FVector2D& AbsoluteEnd);
 
 protected:
 	UFUNCTION(BlueprintCallable)
